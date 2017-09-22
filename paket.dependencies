@@ -1,10 +1,13 @@
-source https://nuget.org/api/v2
 
-nuget FParsec
-nuget System.Reactive
-nuget Newtonsoft.Json
-nuget System.Runtime
-nuget FSharp.Core 
+framework: net45, netstandard1.6
+
+group Main
+  source https://nuget.org/api/v2
+  nuget FParsec
+  nuget System.Reactive
+  nuget Newtonsoft.Json
+  nuget System.Runtime
+  nuget FSharp.Core
 
 group Build
   source https://nuget.org/api/v2
@@ -17,7 +20,8 @@ group Build
 
 group Test
   source https://nuget.org/api/v2
-  nuget FSharp.Core ~> 4.1.18
+  nuget FSharp.Core 
+  nuget Newtonsoft.Json
   nuget BenchmarkDotNet
   nuget xunit 
   nuget xUnit.runner.console

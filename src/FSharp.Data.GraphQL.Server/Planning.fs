@@ -166,15 +166,22 @@ let rec private deepMerge (xs: ExecutionInfo list) (ys: ExecutionInfo list) =
         match x.Kind, y.Kind with 
         | ResolveValue, ResolveValue -> x
         | ResolveCollection(x'), ResolveCollection(y') -> { x with Kind = ResolveCollection(merge x' y') }
-        | ResolveAbstraction(xs'), ResolveAbstraction(ys') -> { x with Kind = ResolveAbstraction(Map.merge (fun _ x' y' -> deepMerge x' y') xs' ys')} // FIXME: This is a test
+        | ResolveAbstraction(xs'), ResolveAbstraction(ys') -> { x with Kind = ResolveAbstraction(Map.merge (fun _ x' y' -> deepMerge x' y') xs' ys')} 
         | SelectFields(xs'), SelectFields(ys') -> { x with Kind = SelectFields(deepMerge xs' ys') }
         | k1, k2 -> failwithf "Cannot merge ExecutionInfos with different kinds!"
-
-    let xs' = List.fold(fun acc x -> 
-        match List.tryFind(fun y -> y.Identifier = x.Identifier) ys with
-        | Some y -> (merge x y):: acc
-        | None -> x::acc) [] xs
-    xs' @ ys
+    // Apply the merge to every conflict
+    let xs' = 
+        xs  
+        |> List.fold(fun acc x -> 
+            match List.tryFind(fun y -> y.Identifier = x.Identifier) ys with
+            | Some y -> (merge x y)::acc
+            | None -> x::acc) [] 
+        |> List.rev
+    // Remove all merged conflicts from ys
+    let ys' =
+        ys
+        |> List.filter(fun y -> not <| List.exists(fun x -> x.Identifier = y.Identifier) xs')
+    xs' @ ys'
 
 let rec private plan (ctx: PlanningContext) (stage:PlanningStage): PlanningStage =
     let info, deferredFields, path = stage
