@@ -964,7 +964,8 @@ module Ast =
         let rec go xs = xs |> List.exists (function
             | Variable varName -> varName = name
             | ObjectValue obj -> go (Map.toList obj |> List.map snd)
-            | _ -> false) 
+            | ListValue vs -> go vs
+            | _ -> false)
         go (args |> List.map (fun x -> x.Value))        
 
     let rec private variableIsUsedInFragmentSpread (name : string) (fragmentDefinitions : FragmentDefinition list) (visitedFragments : string list) (spread : FragmentSpread) =

@@ -189,5 +189,3 @@ and TypeDefinition =
     | UnionTypeDefinition of UnionTypeDefinition
     | EnumTypeDefinition of EnumTypeDefinition
     | InputObjectTypeDefinition of InputObjectTypeDefinition
-
-        

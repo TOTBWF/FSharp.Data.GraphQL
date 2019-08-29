@@ -1071,8 +1071,14 @@ query nestedVariables($name: String) {
     }
 }
 """
+    let query6 =
+        """
+query nestedVariables($boolean: Boolean) {
+    booleanList(booleanList : [$boolean])
+}
+"""
 
-    [query4; query5]
+    [query4; query5; query6]
     |> collectResults (getContext >> Validation.Ast.validateAllVariablesUsed)
     |> equals Success
 
