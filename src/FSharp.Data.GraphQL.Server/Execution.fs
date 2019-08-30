@@ -93,7 +93,7 @@ type NameValueLookup(keyValues: KeyValuePair<string, obj> []) =
             if lookup.Count > 0 then
                 sb.Append("{ ") |> ignore
                 lookup.Buffer
-                |> Array.iter (fun kv -> 
+                |> Array.iter (fun kv ->
                     sb.Append(kv.Key).Append(": ") |> ignore
                     stringify sb (deep+1) kv.Value
                     sb.Append(",\r\n") |> ignore
@@ -103,7 +103,7 @@ type NameValueLookup(keyValues: KeyValuePair<string, obj> []) =
             sb.Append("\"").Append(s).Append("\"") |> ignore
         | :? System.Collections.IEnumerable as s ->
             sb.Append("[") |> ignore
-            for i in s do 
+            for i in s do
                 stringify sb (deep + 1) i
                 sb.Append(", ") |> ignore
             sb.Append("]") |> ignore
@@ -176,17 +176,17 @@ let private collectDefaultArgValue acc (argdef: InputFieldDef) =
     | Some defVal -> Map.add argdef.Name defVal acc
     | None -> acc
 
-let internal argumentValue variables (argdef: InputFieldDef) (argument: Argument) =
-    match argdef.ExecuteInput argument.Value variables  with
+let internal argumentValue (argdef: InputFieldDef) (argument: Argument) (variables : Map<string, Value>) (metadata : Metadata) =
+    match argdef.ExecuteInput argument.Value variables metadata with
     | null -> argdef.DefaultValue
     | value -> Some value
 
-let private getArgumentValues (argDefs: InputFieldDef []) (args: Argument list) (variables: Map<string, obj>) : Map<string, obj> =
+let private getArgumentValues (argDefs: InputFieldDef []) (args: Argument list) (variables: Map<string, Value>) (metadata : Metadata) : Map<string, obj> =
     argDefs
     |> Array.fold (fun acc argdef ->
         match List.tryFind (fun (a: Argument) -> a.Name = argdef.Name) args with
         | Some argument ->
-            match argumentValue variables argdef argument with
+            match argumentValue argdef argument variables metadata with
             | Some v -> Map.add argdef.Name v acc
             | None -> acc
         | None -> collectDefaultArgValue acc argdef
@@ -226,15 +226,15 @@ let private resolveUnionType possibleTypesFn (uniondef: UnionDef) =
 
 let private createFieldContext objdef argDefs ctx (info: ExecutionInfo) =
     let fdef = info.Definition
-    let args = getArgumentValues argDefs info.Ast.Arguments ctx.Variables
+    let args = getArgumentValues argDefs info.Ast.Arguments ctx.Variables ctx.Context.Metadata
     { ExecutionInfo = info
       Context = ctx.Context
       ReturnType = fdef.TypeDef
       ParentType = objdef
       Schema = ctx.Schema
       Args = args
-      Variables = ctx.Variables }         
-                
+      Variables = ctx.Variables }
+
 let private resolveField (execute: ExecuteField) (ctx: ResolveFieldContext) (parentValue: obj) =
     if ctx.ExecutionInfo.IsNullable
     then
@@ -460,7 +460,7 @@ and private live (ctx : ResolveFieldContext) (path : obj list) (parent : obj) (v
         match filter with
         | Some filterFn -> provider.Add (filterFn parent) typeName name |> Observable.bind resolveUpdate
         | None -> failwithf "No live provider for %s:%s" typeName name
-  
+
     executeResolvers ctx path parent (value |> Some |> AsyncVal.wrap)
     |> AsyncVal.map(Result.map(fun (data, deferred, errs) -> (data, Some <| Option.fold Observable.merge2 updates deferred, errs)))
 
@@ -528,7 +528,7 @@ and executeObjectFields (fields : ExecutionInfo list) (objName : string) (objDef
         | Ok(kvps, def, errs) -> return Ok (KeyValuePair(objName, box <| NameValueLookup(kvps)), def, errs)
     }
 
-let internal compileSubscriptionField (subfield: SubscriptionFieldDef) = 
+let internal compileSubscriptionField (subfield: SubscriptionFieldDef) =
     match subfield.Resolve with
     | Resolve.BoxedFilterExpr(_, _, _, filter) -> fun ctx a b -> filter ctx a b |> AsyncVal.wrap |> AsyncVal.toAsync
     | Resolve.BoxedAsyncFilterExpr(_, _, _, filter) -> filter
@@ -563,7 +563,7 @@ let private executeQueryOrMutation (resultSet: (string * ExecutionInfo) []) (ctx
     let executeRootOperation (name, info) =
         let fDef = info.Definition
         let argDefs = ctx.FieldExecuteMap.GetArgs(ctx.ExecutionPlan.RootDef.Name, info.Definition.Name)
-        let args = getArgumentValues argDefs info.Ast.Arguments ctx.Variables
+        let args = getArgumentValues argDefs info.Ast.Arguments ctx.Variables ctx.Metadata
         let path = [info.Identifier :> obj]
         let fieldCtx =
             { ExecutionInfo = info
@@ -595,7 +595,7 @@ let private executeSubscription (resultSet: (string * ExecutionInfo) []) (ctx: E
     // Subscription queries can only have one root field
     let nameOrAlias, info = Array.head resultSet
     let subdef = info.Definition :?> SubscriptionFieldDef
-    let args = getArgumentValues subdef.Args info.Ast.Arguments ctx.Variables
+    let args = getArgumentValues subdef.Args info.Ast.Arguments ctx.Variables ctx.Metadata
     let returnType = subdef.OutputTypeDef
     let fieldCtx =
         { ExecutionInfo = info
@@ -646,14 +646,14 @@ let internal compileSchema (ctx : SchemaCompileContext) =
         | InputObject indef -> compileInputObject indef
         | _ -> ())
 
-let internal coerceVariables (variables: VarDef list) (vars: Map<string, obj>) =
-    variables
-    |> List.fold (fun acc vardef -> Map.add vardef.Name (coerceVariable vardef vars) acc) Map.empty
+// let internal coerceVariables (variables: VarDef list) (vars: Map<string, obj>) =
+//     variables
+//     |> List.fold (fun acc vardef -> Map.add vardef.Name (coerceVariable vardef vars) acc) Map.empty
 
 let internal executeOperation (ctx : ExecutionContext) : AsyncVal<GQLResponse> =
     let resultSet =
         ctx.ExecutionPlan.Fields
-        |> List.filter (fun info -> info.Include ctx.Variables)
+        |> List.filter (fun info -> info.Include ctx.Variables ctx.Metadata)
         |> List.map (fun info -> (info.Identifier, info))
         |> List.toArray
     match ctx.ExecutionPlan.Operation.OperationType with

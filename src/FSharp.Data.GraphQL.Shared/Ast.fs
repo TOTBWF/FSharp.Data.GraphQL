@@ -87,7 +87,7 @@ and FragmentDefinition = {
 }
 
 /// 2.9 Input Values
-and Value = 
+and Value =
     /// 2.9.1 Int Value
     | IntValue of int64
     /// 2.9.2 Float Value

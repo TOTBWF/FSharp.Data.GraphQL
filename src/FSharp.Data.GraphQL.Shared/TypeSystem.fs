@@ -626,7 +626,7 @@ and PlanningContext =
 
 /// A function type, which upon execution returns true if related field should
 /// be included in result set for the query.
-and Includer = Map<string, obj> -> bool
+and Includer = Map<string, Value> -> Metadata -> bool
 
 /// A node representing part of the current GraphQL query execution plan.
 /// It contains info about both document AST fragment of incoming query as well,
@@ -852,7 +852,7 @@ and ExecutionContext =
       /// Execution plan describing, what fiedls are going to be resolved.
       ExecutionPlan : ExecutionPlan
       /// Collection of variables provided to execute current operation.
-      Variables : Map<string, obj>
+      Variables : Map<string, Value>
       /// Collection of errors that occurred while executing current operation.
       Errors : ConcurrentBag<exn>
       /// A map of all fields of the query and their respective execution operations.
@@ -878,7 +878,7 @@ and ResolveFieldContext =
       /// parametrized inputs.
       Args : Map<string, obj>
       /// Variables provided by the operation caller.
-      Variables : Map<string, obj> }
+      Variables : Map<string, Value> }
 
     /// Remembers an exception, so it can be included in the final response.
     member x.AddError(error : exn) = x.Context.Errors.Add error
@@ -984,7 +984,7 @@ and ScalarDef =
         /// Optional scalar type description.
         abstract Description : string option
         /// A function used to retrieve a .NET object from provided GraphQL query.
-        abstract CoerceInput : Value -> obj option
+        abstract CoerceInput : Metadata -> Value -> obj option
         /// A function used to set a surrogate representation to be
         /// returned as a query result.
         abstract CoerceValue : obj -> obj option
@@ -1002,7 +1002,7 @@ and [<CustomEquality; NoComparison>] ScalarDefinition<'Val> =
       /// Optional type description.
       Description : string option
       /// A function used to retrieve a .NET object from provided GraphQL query.
-      CoerceInput : Value -> 'Val option
+      CoerceInput : Metadata -> Value -> 'Val option
       /// A function used to set a surrogate representation to be
       /// returned as a query result.
       CoerceValue : obj -> 'Val option }
@@ -1024,7 +1024,7 @@ and [<CustomEquality; NoComparison>] ScalarDefinition<'Val> =
     interface ScalarDef with
         member x.Name = x.Name
         member x.Description = x.Description
-        member x.CoerceInput input = x.CoerceInput input |> Option.map box
+        member x.CoerceInput metadata input = x.CoerceInput metadata input |> Option.map box
         member x.CoerceValue value = (x.CoerceValue value) |> Option.map box
 
     interface InputDef<'Val>
@@ -1554,7 +1554,7 @@ and InputObjectDefinition<'Val> =
             upcast list
 
 /// Function type used for resolving input object field values.
-and ExecuteInput = Value -> Map<string, obj> -> obj
+and ExecuteInput = Value -> Map<string, Value> -> Metadata -> obj
 
 /// GraphQL field input definition. Can be used as fields for
 /// input objects or as arguments for any ordinary field definition.
@@ -2399,7 +2399,8 @@ module SchemaDefinitions =
         | _ -> Some(x.ToString())
 
     /// Tries to convert any value to generic type parameter.
-    let private coerceIDValue (x : obj) : 't option =
+    [<RequiresExplicitTypeArguments>]
+    let private coerceIdValue<'t> (x : obj) : 't option =
         match x with
         | null -> None
         | :? string as s -> Some (downcast Convert.ChangeType(s, typeof<'t>))
@@ -2407,7 +2408,7 @@ module SchemaDefinitions =
         | _ -> Some(downcast Convert.ChangeType(x, typeof<'t>))
 
     /// Tries to resolve AST query input to int.
-    let private coerceIntInput =
+    let private coerceIntInput _ =
         function
         | IntValue i -> Some (int i)
         | FloatValue f -> Some(int f)
@@ -2421,7 +2422,7 @@ module SchemaDefinitions =
         | _ -> None
 
     /// Tries to resolve AST query input to int64.
-    let private coerceLongInput =
+    let private coerceLongInput _ =
         function
         | IntValue i -> Some (int64 i)
         | FloatValue f -> Some(int64 f)
@@ -2434,7 +2435,7 @@ module SchemaDefinitions =
         | _ -> None
 
     /// Tries to resolve AST query input to double.
-    let private coerceFloatInput =
+    let private coerceFloatInput _ =
         function
         | IntValue i -> Some(double i)
         | FloatValue f -> Some f
@@ -2448,7 +2449,7 @@ module SchemaDefinitions =
         | _ -> None
 
     /// Tries to resolve AST query input to string.
-    let coerceStringInput =
+    let coerceStringInput _ =
         function
         | IntValue i -> Some(i.ToString(CultureInfo.InvariantCulture))
         | FloatValue f -> Some(f.ToString(CultureInfo.InvariantCulture))
@@ -2458,13 +2459,14 @@ module SchemaDefinitions =
                  else "false")
         | _ -> None
 
-    let coerceEnumInput =
+    let coerceEnumInput _ =
         function
         | EnumValue e -> Some e
+        | StringValue e -> Some e
         | _ -> None
 
     /// Tries to resolve AST query input to bool.
-    let coerceBoolInput =
+    let coerceBoolInput _ =
         function
         | IntValue i ->
             Some(if i = 0L then false
@@ -2480,14 +2482,15 @@ module SchemaDefinitions =
         | _ -> None
 
     /// Tries to resolve AST query input to provided generic type.
-    let private coerceIdInput input : 't option=
+    [<RequiresExplicitTypeArguments>]
+    let private coerceIdInput<'t> _ input : 't option =
         match input with
         | IntValue i -> Some(downcast Convert.ChangeType(i, typeof<'t>))
         | StringValue s -> Some(downcast Convert.ChangeType(s, typeof<'t>))
         | _ -> None
 
     /// Tries to resolve AST query input to URI.
-    let private coerceUriInput =
+    let private coerceUriInput _ =
         function
         | StringValue s ->
             match Uri.TryCreate(s, UriKind.RelativeOrAbsolute) with
@@ -2496,7 +2499,7 @@ module SchemaDefinitions =
         | _ -> None
 
     /// Tries to resolve AST query input to DateTime.
-    let private coerceDateInput =
+    let private coerceDateInput _ =
         function
         | StringValue s ->
             match DateTime.TryParse(s) with
@@ -2505,7 +2508,7 @@ module SchemaDefinitions =
         | _ -> None
 
     /// Tries to resolve AST query input to Guid.
-    let private coerceGuidInput =
+    let private coerceGuidInput _ =
         function
         | StringValue s ->
             match Guid.TryParse(s) with
@@ -2523,10 +2526,15 @@ module SchemaDefinitions =
 
     let private ignoreInputResolve (_ : unit) (input : 'T) = ()
 
-    let variableOrElse other value variables =
+    let variableOrElse (other : Metadata -> Value -> obj option) (value : Value) (variables : Map<string, Value>) (metadata : Metadata) : obj =
         match value with
-        | Variable variableName -> Map.tryFind variableName variables |> Option.toObj
-        | v -> other v
+        | Variable variableName ->
+            Map.tryFind variableName variables
+            |> Option.bind (other metadata)
+            |> Option.toObj
+        | v ->
+            other metadata v
+            |> Option.toObj
 
     /// GraphQL type of int
     let Int : ScalarDefinition<int> =
@@ -2577,15 +2585,15 @@ module SchemaDefinitions =
           Description =
               Some
                   "The `ID` scalar type represents a unique identifier, often used to refetch an object or as key for a cache. The ID type appears in a JSON response as a String; however, it is not intended to be human-readable. When expected as an input type, any string (such as `\"4\"`) or integer (such as `4`) input value will be accepted as an ID."
-          CoerceInput = coerceIdInput
-          CoerceValue = coerceIDValue }
+          CoerceInput = coerceIdInput<'Val>
+          CoerceValue = coerceIdValue<'Val> }
 
     let Obj : ScalarDefinition<obj> = {
             Name = "Object"
             Description =
                Some
                   "The `Object` scalar type represents textual data, represented as UTF-8 character sequences. The String type is most often used by GraphQL to represent free-form human-readable text."
-            CoerceInput = (fun (o: Value) -> Some (o:>obj))
+            CoerceInput = (fun _ (o: Value) -> Some (o:>obj))
             CoerceValue = (fun (o: obj) -> Some (o))
         }
 
@@ -2629,9 +2637,7 @@ module SchemaDefinitions =
                    TypeDef = Boolean
                    DefaultValue = None
                    ExecuteInput =
-                       variableOrElse (coerceBoolInput
-                                       >> Option.map box
-                                       >> Option.toObj) } |] }
+                       variableOrElse (fun metadata v -> coerceBoolInput metadata v |> Option.map box) } |] }
 
     /// GraphQL @skip directive.
     let SkipDirective : DirectiveDef =
@@ -2645,9 +2651,7 @@ module SchemaDefinitions =
                    TypeDef = Boolean
                    DefaultValue = None
                    ExecuteInput =
-                       variableOrElse (coerceBoolInput
-                                       >> Option.map box
-                                       >> Option.toObj) } |] }
+                       variableOrElse (fun metadata v -> coerceBoolInput metadata v |> Option.map box) } |] }
 
     /// GraphQL @defer directive.
     let DeferDirective : DirectiveDef =
@@ -2687,7 +2691,7 @@ module SchemaDefinitions =
         /// <param name="coerceInput">Function used to resolve .NET object from GraphQL query AST.</param>
         /// <param name="coerceValue">Function used to cross cast to .NET types.</param>
         /// <param name="description">Optional scalar description. Usefull for generating documentation.</param>
-        static member Scalar(name : string, coerceInput : Value -> 'T option,
+        static member Scalar(name : string, coerceInput : Metadata -> Value -> 'T option,
                              coerceValue : obj -> 'T option, ?description : string) : ScalarDefinition<'T> =
             { Name = name
               Description = description

@@ -90,7 +90,7 @@ type Executor<'Root>(schema: ISchema<'Root>, middlewares : IExecutorMiddleware s
         | Success -> ()
         | ValidationError errors -> raise (GraphQLException (System.String.Join("\n", errors)))
 
-    let eval (executionPlan: ExecutionPlan, data: 'Root option, variables: Map<string, obj>): Async<GQLResponse> =
+    let eval (executionPlan: ExecutionPlan, data: 'Root option, variables: Map<string, Value>): Async<GQLResponse> =
         let prepareOutput res =
             let prepareData data (errs: Error list) =
                 let parsedErrors =
@@ -109,7 +109,7 @@ type Executor<'Root>(schema: ISchema<'Root>, middlewares : IExecutorMiddleware s
                 try
                     let errors = System.Collections.Concurrent.ConcurrentBag<exn>()
                     let root = data |> Option.map box |> Option.toObj
-                    let variables = coerceVariables executionPlan.Variables variables
+                    // let variables = coerceVariables executionPlan.Variables variables
                     let executionCtx = 
                         { Schema = schema
                           ExecutionPlan = executionPlan
@@ -129,7 +129,7 @@ type Executor<'Root>(schema: ISchema<'Root>, middlewares : IExecutorMiddleware s
                 return GQLResponse.Invalid(errors, executionPlan.Metadata)
         }
 
-    let execute (executionPlan: ExecutionPlan, data: 'Root option, variables: Map<string, obj> option) =
+    let execute (executionPlan: ExecutionPlan, data: 'Root option, variables: Map<string, Value> option) =
         let variables = defaultArg variables Map.empty
         eval (executionPlan, data, variables)
 
@@ -177,7 +177,7 @@ type Executor<'Root>(schema: ISchema<'Root>, middlewares : IExecutorMiddleware s
     /// <param name="executionPlan">Execution plan for the operation.</param>
     /// <param name="data">Optional object provided as a root to all top level field resolvers</param>
     /// <param name="variables">Map of all variable values provided by the client request.</param>
-    member __.AsyncExecute(executionPlan: ExecutionPlan, ?data: 'Root, ?variables: Map<string, obj>): Async<GQLResponse> =
+    member __.AsyncExecute(executionPlan: ExecutionPlan, ?data: 'Root, ?variables: Map<string, Value>): Async<GQLResponse> =
         execute (executionPlan, data, variables)
     
     /// <summary>
@@ -191,7 +191,7 @@ type Executor<'Root>(schema: ISchema<'Root>, middlewares : IExecutorMiddleware s
     /// <param name="variables">Map of all variable values provided by the client request.</param>
     /// <param name="operationName">In case when document consists of many operations, this field describes which of them to execute.</param>
     /// <param name="meta">A plain dictionary of metadata that can be used through execution customizations.</param>
-    member __.AsyncExecute(ast: Document, ?data: 'Root, ?variables: Map<string, obj>, ?operationName: string, ?meta : Metadata): Async<GQLResponse> =
+    member __.AsyncExecute(ast: Document, ?data: 'Root, ?variables: Map<string, Value>, ?operationName: string, ?meta : Metadata): Async<GQLResponse> =
         let meta = defaultArg meta Metadata.Empty
         let executionPlan = createExecutionPlan (ast, operationName, meta)
         execute (executionPlan, data, variables)
@@ -207,7 +207,7 @@ type Executor<'Root>(schema: ISchema<'Root>, middlewares : IExecutorMiddleware s
     /// <param name="variables">Map of all variable values provided by the client request.</param>
     /// <param name="operationName">In case when document consists of many operations, this field describes which of them to execute.</param>
     /// <param name="meta">A plain dictionary of metadata that can be used through execution customizations.</param>
-    member __.AsyncExecute(queryOrMutation: string, ?data: 'Root, ?variables: Map<string, obj>, ?operationName: string, ?meta : Metadata): Async<GQLResponse> =
+    member __.AsyncExecute(queryOrMutation: string, ?data: 'Root, ?variables: Map<string, Value>, ?operationName: string, ?meta : Metadata): Async<GQLResponse> =
         let meta = defaultArg meta Metadata.Empty
         let ast = parse queryOrMutation
         let executionPlan = createExecutionPlan (ast, operationName, meta)
