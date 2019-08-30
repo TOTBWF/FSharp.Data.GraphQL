@@ -9,7 +9,7 @@ type internal QueryWeightMiddleware(threshold : float, reportToMetadata : bool) 
     let middleware (threshold : float) (ctx : ExecutionContext) (next : ExecutionContext -> AsyncVal<GQLResponse>) =
         let measureThreshold (threshold : float) (fields : ExecutionInfo list) =
             let getWeight f =
-                if f.ParentDef = upcast ctx.ExecutionPlan.RootDef 
+                if f.ParentDef = upcast ctx.ExecutionPlan.RootDef
                 then 0.0
                 else
                     match f.Definition.Metadata.TryFind<float>("queryWeight") with
@@ -83,7 +83,7 @@ type internal ObjectListFilterMiddleware<'ObjectType, 'ListType>(reportToMetadat
                 field.Ast.Arguments
                 |> Seq.map (fun x ->
                     match x.Name with
-                    | "filter" -> ObjectListFilter.CoerceInput x.Value
+                    | "filter" -> ObjectListFilter.CoerceInput ctx.Metadata x.Value
                     | _ -> None)
                 |> Seq.choose id
                 |> Seq.map (fun x -> field.Ast.AliasOrName, x)
@@ -105,7 +105,7 @@ type internal ObjectListFilterMiddleware<'ObjectType, 'ListType>(reportToMetadat
                 | _ -> collectArgs acc xs
         let ctx =
             match reportToMetadata with
-            | true -> 
+            | true ->
                 { ctx with Metadata = ctx.Metadata.Add("filters", collectArgs [] ctx.ExecutionPlan.Fields) }
             | false -> ctx
         next ctx
